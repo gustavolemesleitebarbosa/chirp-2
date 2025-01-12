@@ -1,22 +1,30 @@
-import { z } from "zod";
+import { clerkClient, type User } from "@clerk/nextjs/server";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 
-export const postRouter = createTRPCRouter({
+const filterUserForClient = (user: User) => {
+  return {
+    id: user.id,
+    username: user.username,
+    imageUrl: user.imageUrl,
+  };
+};
 
+export const postRouter = createTRPCRouter({
   getAll: publicProcedure.query(async ({ ctx }) => {
-    try {
-      const posts = await ctx.db.post.findMany();
-      return posts;
-    } catch (error) {
-      console.error("Error fetching posts:", error);
-      throw new Error("Unable to fetch posts during SSR");
-    }
-  }),
-  test: publicProcedure.query(async ({ ctx }) => {
-    return await ctx.db.post.findMany();
-  }),
-   getLatest: publicProcedure.query(async ({ ctx }) => {
-    return await ctx.db.post.findMany();
+    const posts = await ctx.db.post.findMany({
+      take: 100,
+    });
+    const client = await clerkClient();
+    const users = await client.users
+      .getUserList({
+        userId: posts.map((post) => post.authorId),
+        limit: 100,
+      })
+      .then((users) => users.data.map(filterUserForClient));
+    return posts.map((post) => ({
+      post,
+      author: users.find((user) => user.id === post.authorId),
+    }));
   }),
 });
